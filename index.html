@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="">
+  <title>Blog</title>
+
+  <script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+  
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+
+  <style>
+    .bd-placeholder-img {
+      font-size: 1.125rem;
+      text-anchor: middle;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    
+    @media (min-width: 768px) {
+      .bd-placeholder-img-lg {
+        font-size: 3.5rem;
+      }
+    }
+  </style>
+  <!-- Custom styles for this template -->
+  <link href="https://fonts.googleapis.com/css?family=Playfair+Display:700,900" rel="stylesheet">
+  <!-- Custom styles for this template -->
+  <link href="blog.css" rel="stylesheet">
+
+  <script>
+
+    const CONTENTSTACK_API_KEY = ''
+    const CONTENTSTACK_ACCESS_TOKEN = ''
+
+    if(CONTENTSTACK_API_KEY === '' || CONTENTSTACK_ACCESS_TOKEN === ''){
+      alert('To run this example you must define CONTENTSTACK_API_KEY and CONTENTSTACK_ACCESS_TOKEN in the index.html lines 38-39')
+    } else {
+
+      const api_url = 'https://cdn.contentstack.io/v3'
+      const api_api_key = window.CONTENTSTACK_API_KEY 
+      const api_access_token = window.CONTENTSTACK_ACCESS_TOKEN
+
+      let content_data = {}
+
+      const language_codes = {
+        'en-us': 'English',
+        'es-mx': 'Español'
+      }
+
+      const request = async (path) => {
+        path += (path.indexOf('?') !== -1) ? '&' : '?'
+        path += 'include_count=true' 
+        return await $.ajax({
+          url: api_url + path,
+          headers: {
+            'access_token': api_access_token,
+            'api_key': api_api_key
+          }
+        })
+      }
+
+      window.onhashchange = () => { 
+        let hash = window.location.hash
+        hash = hash.replace('#/', '')
+        load_content_type(hash)
+      }
+
+      const render = (locales, content_types, section) => {
+        const menu = content_types.map((item) => {
+          if(item.uid !== 'home'){
+            return `<a class="p-2 text-muted action-content-types" data-content-type="${item.uid}" href="#/${item.uid}">${item.title}</a>`
+          }
+        })
+
+        const language = locales.map((item) => {
+          const lang = (language_codes[item.code])? language_codes[item.code] : item.name
+          return `&nbsp;<a class="btn btn-sm btn-outline-secondary action-content-language" data-content-language="${item.code}" href="#">${lang}</a>`
+        })
+
+        const content_type_section = content_types.filter((item) => {
+          return (item.uid === section)? true : false
+        })
+
+        const content_type_sections = content_types.filter((item) => {
+          return (item.uid !== section)? true : false
+        })
+
+        content_type_latest = content_type_section[0].entries[0]
+
+        const content_head = `
+          <h1 class="display-4 font-italic">${content_type_latest.title}</h1>
+          <p class="lead my-3">${content_type_latest.intro}</p>
+          <!--p class="lead mb-0"><a href="#" class="text-white font-weight-bold">Continue reading...</a></p-->
+        `
+
+        let latest_each_section = content_type_sections
+          .filter((item) => {
+            return (item.entries[0])? true : false
+          })
+          .map((item) => {
+            let editorName = (item.entries[0].editor && item.entries[0].editor.name)? item.entries[0].editor.name : 'Nobody'
+            return `
+              <div class="blog-post">
+                <h2 class="blog-post-title">${item.entries[0].title}</h2>
+                <p class="blog-post-meta">${item.entries[0].created_at} by <a href="#">${editorName}</a></p>
+                <p>${item.entries[0].rich_text_editor}</p>
+              </div>
+            `
+          })
+        latest_each_section = latest_each_section.slice(0,2)
+
+        document.querySelector('#content-menu').innerHTML = menu.join('')
+        document.querySelector('#content-language').innerHTML = language.join('')
+        document.querySelector('#content-head').innerHTML = content_head
+        document.querySelector('#content-posts').innerHTML = latest_each_section.join('')
+
+        // Events
+        $('.action-content-language').on('click', function(e) {
+          e.preventDefault()
+          let language = $(this).data('content-language')
+          localStorage.setItem('content-language', language)
+          init()
+        })
+        
+      }
+
+      const getData = async () => {
+
+        // Default language
+        let content_language = localStorage.getItem('content-language')
+        if(!content_language){
+          content_language = 'en-us'
+        }
+
+        // Get locales
+        let locales = await request('/locales?desc=updated_at')
+        locales = locales.locales
+
+        // Get content types
+        let content_types = await request('/content_types')
+        content_types = content_types.content_types
+
+        // Get entries for each content type
+        for (let i = content_types.length - 1; i >= 0; i--) {
+          let content_type = content_types[i].uid
+          const content_type_entries = await request('/content_types/' + content_type + '/entries?environment=production&locale=' + content_language)
+          content_types[i].entries = content_type_entries.entries
+        }
+
+        return {locales: locales, content_types: content_types}
+      }
+
+      const init = async () => {
+
+        content_data = await getData()
+        console.log('Data from ContentStack',content_data)
+        render(content_data.locales, content_data.content_types, 'home')
+
+      }
+
+      init()
+    }
+
+    </script>
+
+</head>
+
+<body>
+  <div class="container">
+    <header class="blog-header py-3">
+      <div class="row flex-nowrap justify-content-between align-items-center">
+        <div class="col-4 pt-1">
+        </div>
+        <div class="col-4 text-center">
+          <a class="blog-header-logo text-dark" href="#">Company blog</a>
+        </div>
+        <div class="col-4 d-flex justify-content-end align-items-center" id="content-language">
+        </div>
+      </div>
+    </header>
+
+    <div class="nav-scroller py-1 mb-2">
+      <nav class="nav d-flex justify-content-between" id="content-menu"></nav>
+    </div>
+
+    <div class="jumbotron p-4 p-md-5 text-white rounded bg-dark">
+      <div class="col-md-6 px-0" id="content-head">
+      </div>
+    </div>
+
+  <main role="main" class="container">
+    <div class="row">
+      <div class="col-md-8 blog-main">
+
+        <div id="content-posts"></div>
+
+      </div>
+      <!-- /.blog-main -->
+
+      <aside class="col-md-4 blog-sidebar">
+        <div class="p-4 mb-3 bg-light rounded">
+          <h4 class="font-italic">About</h4>
+          <p class="mb-0">Etiam porta <em>sem malesuada magna</em> mollis euismod. Cras mattis consectetur purus sit amet fermentum. Aenean lacinia bibendum nulla sed consectetur.</p>
+        </div>
+
+      </aside>
+      <!-- /.blog-sidebar -->
+
+    </div>
+    <!-- /.row -->
+
+  </main>
+  <!-- /.container -->
+
+  <footer class="blog-footer">
+    <p>
+      <a href="#">Back to top</a>
+    </p>
+  </footer>
+</body>
+
+</html>
